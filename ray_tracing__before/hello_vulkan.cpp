@@ -26,6 +26,9 @@
 #include "stb_image.h"
 
 #include "hello_vulkan.h"
+
+#include <nvvk/raytraceKHR_vk.hpp>
+
 #include "nvh/alignment.hpp"
 #include "nvh/cameramanipulator.hpp"
 #include "nvh/fileoperations.hpp"
@@ -565,4 +568,62 @@ void HelloVulkan::drawPost(VkCommandBuffer cmdBuf)
 
 
   m_debug.endLabel(cmdBuf);
+}
+
+void HelloVulkan::initRayTracing()
+{
+  // Requesting ray tracing properties
+  VkPhysicalDeviceProperties2 prop2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+  prop2.pNext = &m_rtProperties;
+  vkGetPhysicalDeviceProperties2(m_physicalDevice, &prop2);
+
+	m_rtBuilder.setup(&m_device, &m_alloc, m_graphicsQueueIndex);
+}
+
+auto HelloVulkan::objectToVkGeometryKHR(const ObjModel& model)
+{
+  VkDeviceAddress vertexAddress = nvvk::getBufferDeviceAddress(m_device, model.vertexBuffer.buffer);
+  VkDeviceAddress indexAddress  = nvvk::getBufferDeviceAddress(m_device, model.indexBuffer.buffer);
+
+	uint32_t maxPrimitiveCount = model.nbIndices / 3;
+
+	VkAccelerationStructureGeometryTrianglesDataKHR triangles{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
+  triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+  triangles.vertexData.deviceAddress = vertexAddress;
+  triangles.vertexStride             = sizeof(VertexObj);
+
+	triangles.indexType = VK_INDEX_TYPE_UINT32;
+  triangles.indexData.deviceAddress = indexAddress;
+  triangles.maxVertex               = model.nbVertices;
+
+	VkAccelerationStructureGeometryKHR asGeo{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+  asGeo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+  asGeo.geometry.triangles = triangles;
+  asGeo.flags              = VK_GEOMETRY_OPAQUE_BIT_KHR;
+
+	VkAccelerationStructureBuildRangeInfoKHR offset;
+  offset.firstVertex = 0;
+  offset.primitiveCount = maxPrimitiveCount;
+  offset.primitiveOffset = 0;
+  offset.transformOffset = 0;
+
+	nvvk::RaytracingBuilderKHR::BlasInput input;
+  input.asGeometry.emplace_back(asGeo);
+  input.asBuildOffsetInfo.emplace_back(offset);
+
+	return input;
+}
+
+void HelloVulkan::createBottomLevelAS()
+{
+  std::vector<nvvk::RaytracingBuilderKHR::BlasInput> allBlas;
+  allBlas.reserve(m_objModel.size());
+
+	for(const auto& obj : m_objModel)
+	{
+	    auto blas = objectToVkGeometryKHR(obj);
+	    allBlas.emplace_back(blas);
+	}
+
+	m_rtBuilder.buildBlas(allBlas, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
 }

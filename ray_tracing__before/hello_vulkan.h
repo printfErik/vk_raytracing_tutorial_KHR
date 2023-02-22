@@ -24,6 +24,7 @@
 #include "nvvk/descriptorsets_vk.hpp"
 #include "nvvk/memallocator_dma_vk.hpp"
 #include "nvvk/resourceallocator_vk.hpp"
+#include "nvvk/raytraceKHR_vk.hpp"
 #include "shaders/host_device.h"
 
 //--------------------------------------------------------------------------------------------------
@@ -48,6 +49,7 @@ public:
   void onResize(int /*w*/, int /*h*/) override;
   void destroyResources();
   void rasterize(const VkCommandBuffer& cmdBuff);
+  
 
   // The OBJ model
   struct ObjModel
@@ -107,6 +109,10 @@ public:
   void updatePostDescriptorSet();
   void drawPost(VkCommandBuffer cmdBuf);
 
+  void initRayTracing();
+  auto objectToVkGeometryKHR(const ObjModel& model);
+  void createBottomLevelAS();
+
   nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
   VkDescriptorPool            m_postDescPool{VK_NULL_HANDLE};
   VkDescriptorSetLayout       m_postDescSetLayout{VK_NULL_HANDLE};
@@ -119,4 +125,8 @@ public:
   nvvk::Texture               m_offscreenDepth;
   VkFormat                    m_offscreenColorFormat{VK_FORMAT_R32G32B32A32_SFLOAT};
   VkFormat                    m_offscreenDepthFormat{VK_FORMAT_X8_D24_UNORM_PACK32};
+
+  VkPhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+  nvvk::RaytracingBuilderKHR                      m_rtBuilder;
+
 };
