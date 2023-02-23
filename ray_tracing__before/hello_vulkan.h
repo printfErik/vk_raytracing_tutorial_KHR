@@ -117,6 +117,8 @@ public:
   void createRTDescriptorSet();
   void updateRTDesciptorSet();
 
+	void createRTPipeline();
+
   nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
   VkDescriptorPool            m_postDescPool{VK_NULL_HANDLE};
   VkDescriptorSetLayout       m_postDescSetLayout{VK_NULL_HANDLE};
@@ -138,4 +140,10 @@ public:
 	VkDescriptorSet				m_rtDS;
   VkDescriptorSetLayout			m_rtDSLayout;
 
+	std::vector< VkRayTracingShaderGroupCreateInfoKHR > m_rtShaderGroups;
+  VkPipelineLayout									  m_rtPipelineLayout;
+	VkPipeline											m_rtPipeline;
+
+
+	PushConstantRay m_pcRay{};
 };
