@@ -112,6 +112,10 @@ public:
   void initRayTracing();
   auto objectToVkGeometryKHR(const ObjModel& model);
   void createBottomLevelAS();
+  void createTopLevelAS();
+
+  void createRTDescriptorSet();
+  void updateRTDesciptorSet();
 
   nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
   VkDescriptorPool            m_postDescPool{VK_NULL_HANDLE};
@@ -128,5 +132,10 @@ public:
 
   VkPhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProperties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
   nvvk::RaytracingBuilderKHR                      m_rtBuilder;
+
+	nvvk::DescriptorSetBindings m_rtDSBinding;
+  VkDescriptorPool			  m_rtDSPool;
+	VkDescriptorSet				m_rtDS;
+  VkDescriptorSetLayout			m_rtDSLayout;
 
 };

@@ -210,8 +210,11 @@ void HelloVulkan::loadModel(const std::string& filename, nvmath::mat4f transform
   nvvk::CommandPool  cmdBufGet(m_device, m_graphicsQueueIndex);
   VkCommandBuffer    cmdBuf = cmdBufGet.createCommandBuffer();
   VkBufferUsageFlags flag   = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-  model.vertexBuffer        = m_alloc.createBuffer(cmdBuf, loader.m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | flag);
-  model.indexBuffer         = m_alloc.createBuffer(cmdBuf, loader.m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | flag);
+  VkBufferUsageFlags rtFlag = flag | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+							  | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+
+  model.vertexBuffer   = m_alloc.createBuffer( cmdBuf, loader.m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | rtFlag );
+  model.indexBuffer	   = m_alloc.createBuffer( cmdBuf, loader.m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | rtFlag );
   model.matColorBuffer = m_alloc.createBuffer(cmdBuf, loader.m_materials, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | flag);
   model.matIndexBuffer = m_alloc.createBuffer(cmdBuf, loader.m_matIndx, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | flag);
   // Creates all textures found and find the offset for this model
@@ -373,6 +376,10 @@ void HelloVulkan::destroyResources()
     m_alloc.destroy(t);
   }
 
+	vkDestroyDescriptorSetLayout( m_device, m_rtDSLayout, nullptr );
+	vkDestroyDescriptorPool( m_device, m_rtDSPool, nullptr );
+	
+
   //#Post
   m_alloc.destroy(m_offscreenColor);
   m_alloc.destroy(m_offscreenDepth);
@@ -384,6 +391,7 @@ void HelloVulkan::destroyResources()
   vkDestroyFramebuffer(m_device, m_offscreenFramebuffer, nullptr);
 
   m_alloc.deinit();
+  m_rtBuilder.destroy();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -425,6 +433,7 @@ void HelloVulkan::onResize(int /*w*/, int /*h*/)
 {
   createOffscreenRender();
   updatePostDescriptorSet();
+  updateRTDesciptorSet();
 }
 
 
@@ -580,7 +589,7 @@ void HelloVulkan::initRayTracing()
 	m_rtBuilder.setup(&m_device, &m_alloc, m_graphicsQueueIndex);
 }
 
-auto HelloVulkan::objectToVkGeometryKHR(const ObjModel& model)
+auto HelloVulkan::objectToVkGeometryKHR( const ObjModel& model )
 {
   VkDeviceAddress vertexAddress = nvvk::getBufferDeviceAddress(m_device, model.vertexBuffer.buffer);
   VkDeviceAddress indexAddress  = nvvk::getBufferDeviceAddress(m_device, model.indexBuffer.buffer);
@@ -627,3 +636,60 @@ void HelloVulkan::createBottomLevelAS()
 
 	m_rtBuilder.buildBlas(allBlas, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR);
 }
+
+void HelloVulkan::createTopLevelAS()
+{
+	std::vector< VkAccelerationStructureInstanceKHR > tlas;
+	tlas.reserve( m_instances.size() );
+
+	for(const HelloVulkan::ObjInstance& instance: m_instances)
+	{
+		VkAccelerationStructureInstanceKHR rayInstance{};
+		rayInstance.transform = nvvk::toTransformMatrixKHR( instance.transform );
+		rayInstance.instanceCustomIndex = instance.objIndex;
+		rayInstance.accelerationStructureReference = m_rtBuilder.getBlasDeviceAddress( instance.objIndex );
+		rayInstance.flags						   = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+		rayInstance.mask						   = 0xFF;
+		rayInstance.instanceShaderBindingTableRecordOffset = 0;
+
+		tlas.emplace_back( rayInstance );
+	}
+
+	m_rtBuilder.buildTlas( tlas, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR );
+}
+
+void HelloVulkan::createRTDescriptorSet()
+{
+	m_rtDSBinding.addBinding( RtxBindings::eTlas, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR );
+	m_rtDSBinding.addBinding( RtxBindings::eOutImage, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_RAYGEN_BIT_KHR );
+
+	m_rtDSPool = m_rtDSBinding.createPool( m_device );
+	m_rtDSLayout = m_rtDSBinding.createLayout( m_device );
+
+	VkDescriptorSetAllocateInfo allocateInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocateInfo.descriptorPool = m_rtDSPool;
+	allocateInfo.descriptorSetCount = 1;
+	allocateInfo.pSetLayouts		= &m_rtDSLayout;
+	vkAllocateDescriptorSets( m_device, &allocateInfo, &m_descSet );
+
+	VkAccelerationStructureKHR tlas = m_rtBuilder.getAccelerationStructure();
+	VkWriteDescriptorSetAccelerationStructureKHR descASInfo{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR };
+	descASInfo.accelerationStructureCount = 1;
+	descASInfo.pAccelerationStructures	  = &tlas;
+	VkDescriptorImageInfo imageInfo{ {}, m_offscreenColor.descriptor.imageView, VK_IMAGE_LAYOUT_GENERAL };
+
+	std::vector< VkWriteDescriptorSet > writes;
+
+	writes.emplace_back( m_rtDSBinding.makeWrite( m_rtDS, RtxBindings::eTlas, &descASInfo) );
+	writes.emplace_back( m_rtDSBinding.makeWrite( m_rtDS, RtxBindings::eOutImage, &imageInfo ) );
+
+	vkUpdateDescriptorSets( m_device, static_cast< int >( writes.size() ), writes.data(), 0, nullptr );
+}
+
+void HelloVulkan::updateRTDesciptorSet()
+{
+	VkDescriptorImageInfo imageInfo{ {}, m_offscreenColor.descriptor.imageView, VK_IMAGE_LAYOUT_GENERAL };
+	VkWriteDescriptorSet  wds = m_rtDSBinding.makeWrite( m_rtDS, RtxBindings::eOutImage, &imageInfo );
+	vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+}
+
