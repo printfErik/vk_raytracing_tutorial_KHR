@@ -693,3 +693,36 @@ void HelloVulkan::updateRTDesciptorSet()
 	vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
 }
 
+void HelloVulkan::createRTPipeline()
+{
+	enum class StageIndices
+	{
+		eRaygen,
+		eMiss,
+		eClosestHit,
+		eShaderGroupCount
+	};
+
+	std::array< VkPipelineShaderStageCreateInfo, (int)StageIndices::eShaderGroupCount > stages{};
+
+	VkPipelineShaderStageCreateInfo stage{ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+	stage.pName = "main";
+
+	// Ray Gen
+	stage.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+	stage.module = nvvk::createShaderModule( m_device, nvh::loadFile( "spv/rayrace.rgen.spv", true, defaultSearchPaths, true ) );
+	stages[ (int) StageIndices::eRaygen ] = stage;
+
+	// Miss
+	stage.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
+	stage.module = nvvk::createShaderModule( m_device, nvh::loadFile( "spv/raytrace.rmiss.spv", true, defaultSearchPaths ) );
+	stages[ (int) StageIndices::eMiss ] = stage;
+
+	// Closest Hit
+	stage.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+	stage.module = nvvk::createShaderModule( m_device, nvh::loadFile( "spv/raytrace.rchit.spv", true, defaultSearchPaths ) );
+	stages[ (int) StageIndices::eClosestHit ] = stage;
+
+	VkRayTracingShaderGroupCreateInfoKHR group{ VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR };
+	group.anyHitShader = VK_SHADER_UNUSED_KHR;
+}
