@@ -167,9 +167,13 @@ int main(int argc, char** argv)
   helloVk.createUniformBuffer();
   helloVk.createObjDescriptionBuffer();
   helloVk.updateDescriptorSet();
+
   helloVk.initRayTracing();
   helloVk.createBottomLevelAS();
   helloVk.createTopLevelAS();
+  helloVk.createRTDescriptorSet();
+  helloVk.createRTPipeline();
+
 
   helloVk.createPostDescriptor();
   helloVk.createPostPipeline();

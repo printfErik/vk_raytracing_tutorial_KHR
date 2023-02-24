@@ -119,6 +119,8 @@ public:
 
 	void createRTPipeline();
 
+	void createRTShaderBidningTable();
+
   nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
   VkDescriptorPool            m_postDescPool{VK_NULL_HANDLE};
   VkDescriptorSetLayout       m_postDescSetLayout{VK_NULL_HANDLE};
@@ -146,4 +148,10 @@ public:
 
 
 	PushConstantRay m_pcRay{};
+
+	nvvk::Buffer m_rtSBTBuffer;
+	VkStridedDeviceAddressRegionKHR m_rgenRegion{};
+	VkStridedDeviceAddressRegionKHR m_missRegion{};
+	VkStridedDeviceAddressRegionKHR m_hitGRegion{};
+	VkStridedDeviceAddressRegionKHR m_callRegion{};
 };

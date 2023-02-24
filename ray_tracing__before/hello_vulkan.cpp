@@ -378,7 +378,9 @@ void HelloVulkan::destroyResources()
 
 	vkDestroyDescriptorSetLayout( m_device, m_rtDSLayout, nullptr );
 	vkDestroyDescriptorPool( m_device, m_rtDSPool, nullptr );
-	
+
+	vkDestroyPipeline( m_device, m_rtPipeline, nullptr );
+	vkDestroyPipelineLayout( m_device, m_rtPipelineLayout, nullptr );
 
   //#Post
   m_alloc.destroy(m_offscreenColor);
@@ -725,4 +727,86 @@ void HelloVulkan::createRTPipeline()
 
 	VkRayTracingShaderGroupCreateInfoKHR group{ VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR };
 	group.anyHitShader = VK_SHADER_UNUSED_KHR;
+	group.closestHitShader = VK_SHADER_UNUSED_KHR;
+	group.generalShader	   = VK_SHADER_UNUSED_KHR;
+	group.intersectionShader = VK_SHADER_UNUSED_KHR;
+
+	group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+	group.generalShader = (uint32_t) StageIndices::eRaygen;
+	m_rtShaderGroups.push_back( group );
+
+	group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+	group.generalShader = (uint32_t) StageIndices::eMiss;
+	m_rtShaderGroups.push_back( group );
+
+	group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+	group.generalShader = VK_SHADER_UNUSED_KHR;
+	group.closestHitShader = (uint32_t) StageIndices::eClosestHit;
+	m_rtShaderGroups.push_back( group );
+
+	VkPushConstantRange pushConstant{ VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+									  0, sizeof( PushConstantRay ) };
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	std::vector< VkDescriptorSetLayout > dsLayout{ m_rtDSLayout, m_descSetLayout };
+	pipelineLayoutInfo.setLayoutCount = dsLayout.size();
+	pipelineLayoutInfo.pSetLayouts	  = dsLayout.data();
+
+	vkCreatePipelineLayout( m_device, &pipelineLayoutInfo, nullptr, &m_rtPipelineLayout);
+
+	VkRayTracingPipelineCreateInfoKHR rtPipelineInfo{ VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR };
+	rtPipelineInfo.stageCount = stages.size();
+	rtPipelineInfo.pStages	  = stages.data();
+	rtPipelineInfo.groupCount = m_rtShaderGroups.size();
+	rtPipelineInfo.pGroups	  = m_rtShaderGroups.data();
+
+	rtPipelineInfo.layout = m_rtPipelineLayout;
+	rtPipelineInfo.maxPipelineRayRecursionDepth = 1;
+
+	vkCreateRayTracingPipelinesKHR( m_device, {}, {}, 1, &rtPipelineInfo, nullptr, &m_rtPipeline );
+
+	for(auto& stage : stages)
+	{
+		vkDestroyShaderModule( m_device, stage.module, nullptr );
+	}
 }
+
+void HelloVulkan::createRTShaderBidningTable()
+{
+	uint32_t missCount{ 1 };
+	uint32_t hitCount{ 1 };
+	auto	 handleCount = 1 + missCount + hitCount;
+	uint32_t handleSize	 = m_rtProperties.shaderGroupHandleSize;
+
+	uint32_t handleSizeAligned = nvh::align_up( handleSize, m_rtProperties.shaderGroupHandleAlignment );
+
+	m_rgenRegion.stride = nvh::align_up( handleSizeAligned, m_rtProperties.shaderGroupBaseAlignment );
+	m_rgenRegion.size = m_rgenRegion.stride;  // The size member of pRayGenShaderBindingTable must be equal to its stride member
+	m_missRegion.stride = handleSizeAligned;
+	m_missRegion.size	= nvh::align_up( missCount * handleSizeAligned, m_rtProperties.shaderGroupBaseAlignment );
+	m_hitGRegion.stride	= handleSizeAligned;
+	m_hitGRegion.size	= nvh::align_up( hitCount * handleSizeAligned, m_rtProperties.shaderGroupBaseAlignment );
+
+	uint32_t dataSize = handleCount * handleSize;
+	std::vector< uint8_t > handles( dataSize );
+
+	auto result = vkGetRayTracingShaderGroupHandlesKHR( m_device, m_rtPipeline, 0, handleCount, dataSize, handles.data() );
+
+	VkDeviceSize sbtSize = m_rgenRegion.size + m_missRegion.size + m_hitGRegion.size;
+
+	m_rtSBTBuffer = m_alloc.createBuffer( sbtSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+													   | VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+													   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+	m_debug.setObjectName( m_rtSBTBuffer.buffer, "SBTName" );
+
+	VkBufferDeviceAddressInfo info{ VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
+	VkDeviceAddress			  sbtAddress = vkGetBufferDeviceAddress( m_device, &info );
+	m_rgenRegion.deviceAddress			 = sbtAddress;
+	m_missRegion.deviceAddress			 = sbtAddress + m_rgenRegion.size;
+	m_hitGRegion.deviceAddress			 = sbtAddress + m_rgenRegion.size + m_missRegion.size;
+
+}
+
