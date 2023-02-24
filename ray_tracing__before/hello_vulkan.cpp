@@ -808,5 +808,21 @@ void HelloVulkan::createRTShaderBidningTable()
 	m_missRegion.deviceAddress			 = sbtAddress + m_rgenRegion.size;
 	m_hitGRegion.deviceAddress			 = sbtAddress + m_rgenRegion.size + m_missRegion.size;
 
+	auto getHandle = [ & ]( int i )
+	{
+		return handles.data() + i * handleSize;
+	};
+
+	
+	// Ray Gen
+	auto*	 pSBTBuffer = reinterpret_cast< uint8_t* >( m_alloc.map( m_rtSBTBuffer ) );
+	uint8_t* pData{ nullptr };
+	uint32_t handleIdx{ 0 };
+
+	pData = pSBTBuffer;
+	memcpy( pData, getHandle( handleIdx++ ), handleSize );
+
+	// Miss
+
 }
 
