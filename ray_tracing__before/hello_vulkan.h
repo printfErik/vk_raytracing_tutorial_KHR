@@ -121,6 +121,8 @@ public:
 
 	void createRTShaderBidningTable();
 
+	void raytrace( const VkCommandBuffer& cmdBuf, const nvmath::vec4f& clearColor );
+
   nvvk::DescriptorSetBindings m_postDescSetLayoutBind;
   VkDescriptorPool            m_postDescPool{VK_NULL_HANDLE};
   VkDescriptorSetLayout       m_postDescSetLayout{VK_NULL_HANDLE};

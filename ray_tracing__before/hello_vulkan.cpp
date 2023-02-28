@@ -823,6 +823,30 @@ void HelloVulkan::createRTShaderBidningTable()
 	memcpy( pData, getHandle( handleIdx++ ), handleSize );
 
 	// Miss
+	pData = pSBTBuffer + m_rgenRegion.size;
+	for( uint32_t c = 0; c < missCount; c++ )
+	{
+		memcpy( pData, getHandle( handleIdx++ ), handleSize );
+		pData += m_missRegion.stride;
+	}
 
+	pData = pSBTBuffer + m_rgenRegion.size + m_missRegion.size;
+	for( uint32_t c = 0; c < hitCount; c++ )
+	{
+		memcpy( pData, getHandle( handleIdx++ ), handleSize );
+		pData += m_hitGRegion.stride;
+	}
+
+	m_alloc.unmap( m_rtSBTBuffer );
+	m_alloc.finalizeAndReleaseStaging();
+}
+
+void HelloVulkan::raytrace(const VkCommandBuffer& cmdBuf, const nvmath::vec4f& clearColor)
+{
+	m_debug.beginLabel( cmdBuf, "Ray trace" );
+	m_pcRay.clearColor = clearColor;
+	m_pcRay.lightPosition = m_pcRaster.lightPosition;
+	m_pcRay.lightIntensity = m_pcRaster.lightIntensity;
+	m_pcRay.lightType	   = m_pcRaster.lightType;
 }
 

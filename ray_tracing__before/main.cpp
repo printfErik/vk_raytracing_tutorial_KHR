@@ -173,6 +173,7 @@ int main(int argc, char** argv)
   helloVk.createTopLevelAS();
   helloVk.createRTDescriptorSet();
   helloVk.createRTPipeline();
+  helloVk.createRTShaderBidningTable();
 
 
   helloVk.createPostDescriptor();
